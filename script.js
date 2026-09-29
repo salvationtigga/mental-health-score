@@ -1,6 +1,6 @@
 "use strict";
 
-const API_URL = "https://mental-health-score-ydhz.onrender.com";
+const API_URL = "https://mental-health-score-ydhz.onrender.com/predict";
 const REQUEST_TIMEOUT_MS = 15000;
 const MAX_SCORE = 10; // Ring gauge scale. Change if your model's target uses a different range.
 
