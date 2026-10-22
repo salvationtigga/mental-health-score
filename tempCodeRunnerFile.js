@@ -1,0 +1,1 @@
+const API_URL = "https://mental-health-score-ydhz.onrender.com/predict"
