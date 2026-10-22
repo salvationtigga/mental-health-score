@@ -1,4 +1,3 @@
-
 name: Deploy to AWS EC2
 
 on:
@@ -6,22 +5,22 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Copy files to EC2
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: 22
-          source: "."
-          target: "/home/ubuntu/app"
-          rm: false
-          strip_components: 0
+      - name: Copy files to app directory
+        run: |
+          mkdir -p /home/ubuntu/app
+          rsync -av \
+            --exclude='.git/' \
+            --exclude='.github/' \
+            ./ /home/ubuntu/app/
+
