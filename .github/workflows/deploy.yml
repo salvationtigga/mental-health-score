@@ -13,7 +13,7 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # 1. Checkout GitHub repository
+      # 1. Checkout repository
       - name: Checkout Repository
         uses: actions/checkout@v4
 
@@ -24,6 +24,8 @@ jobs:
           EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
           EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
+          set -e
+
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
 
@@ -39,6 +41,8 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
+          set -e
+
           ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
             "mkdir -p /home/ubuntu/app"
 
@@ -48,40 +52,66 @@ jobs:
             --exclude='venv' \
             --exclude='.venv' \
             --exclude='__pycache__' \
+            --exclude='*.pem' \
+            --exclude='*.ppk' \
             -e "ssh -i ~/.ssh/deploy_key" \
             ./ "$EC2_USER@$EC2_HOST:/home/ubuntu/app/"
 
-      # 4. Install dependencies
+      # 4. Install Python and dependencies
       - name: Install Dependencies on EC2
         shell: bash
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
+          set -e
+
           ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
+            set -e
+
             cd /home/ubuntu/app
+
+            sudo apt-get update
+            sudo apt-get install -y python3-venv
+
+            python3 -m venv venv
 
             source venv/bin/activate
 
+            python -m pip install --upgrade pip
+
             if [ -f requirements.txt ]; then
               pip install -r requirements.txt
+            else
+              echo "ERROR: requirements.txt not found"
+              exit 1
             fi
+
+            echo "Dependencies installed successfully"
           EOF
 
-      # 5. Restart Application
+      # 5. Restart application
       - name: Restart Application
         shell: bash
         env:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           EC2_USER: ${{ secrets.EC2_USER }}
         run: |
+          set -e
+
           ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
+            set -e
+
             sudo systemctl restart mental-health-score
-            sudo systemctl status mental-health-score --no-pager
+
+            sudo systemctl is-active mental-health-score
+
+            echo "Deployment successful!"
           EOF
 
       # 6. Cleanup SSH key
       - name: Cleanup SSH Key
         if: always()
+        shell: bash
         run: |
           rm -f ~/.ssh/deploy_key
