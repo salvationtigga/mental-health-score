@@ -1,26 +1,87 @@
-name: Deploy to AWS EC2
+
+name: Mental Health Score - CI/CD
 
 on:
   push:
     branches:
       - main
 
-permissions:
-  contents: read
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: self-hosted
 
     steps:
-      - name: Checkout code
+      # 1. Checkout GitHub repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Copy files to app directory
+      # 2. Setup SSH
+      - name: Setup SSH
+        shell: bash
+        env:
+          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-          mkdir -p /home/ubuntu/app
-          rsync -av \
-            --exclude='.git/' \
-            --exclude='.github/' \
-            ./ /home/ubuntu/app/
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
+          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      # 3. Upload code to EC2
+      - name: Upload Code to EC2
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
+            "mkdir -p /home/ubuntu/app"
+
+          rsync -avz \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='venv' \
+            --exclude='.venv' \
+            --exclude='__pycache__' \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            ./ "$EC2_USER@$EC2_HOST:/home/ubuntu/app/"
+
+      # 4. Install dependencies
+      - name: Install Dependencies on EC2
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
+            cd /home/ubuntu/app
+
+            source venv/bin/activate
+
+            if [ -f requirements.txt ]; then
+              pip install -r requirements.txt
+            fi
+          EOF
+
+      # 5. Restart Application
+      - name: Restart Application
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+          EC2_USER: ${{ secrets.EC2_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
+            sudo systemctl restart mental-health-score
+            sudo systemctl status mental-health-score --no-pager
+          EOF
+
+      # 6. Cleanup SSH key
+      - name: Cleanup SSH Key
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key
