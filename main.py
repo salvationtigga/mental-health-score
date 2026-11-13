@@ -40,7 +40,7 @@ class PredictionResponse(BaseModel):
     predicted_mental_health_score:float
 
 
-
+  
 
 @app.get('/')
 def greet():
@@ -48,7 +48,7 @@ def greet():
 
 @app.get("/")
 def hello():
-    return "Hello! Welcome to the Mental Health Prediction API."
+    return {"Hello! Welcome to the Mental Health Prediction API."}
 
 
 top_countries = ['Other','India','USA','Canada','Australia','UK','Germany','Mexico',
