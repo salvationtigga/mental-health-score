@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
 jobs:
@@ -13,40 +12,17 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      # 1. Checkout repository
+      # 1. Checkout latest code
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Setup SSH
-      - name: Setup SSH
+      # 2. Deploy code to EC2
+      - name: Upload Code
         shell: bash
-        env:
-          EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
-          EC2_HOST: ${{ secrets.EC2_HOST }}
         run: |
-          set -e
+          set -euo pipefail
 
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-
-          printf '%s\n' "$EC2_SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-
-          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
-
-      # 3. Upload code to EC2
-      - name: Upload Code to EC2
-        shell: bash
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
-        run: |
-          set -e
-
-          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" \
-            "mkdir -p /home/ubuntu/app"
-
-          rsync -avz \
+          rsync -av \
             --exclude='.git' \
             --exclude='.env' \
             --exclude='venv' \
@@ -54,64 +30,58 @@ jobs:
             --exclude='__pycache__' \
             --exclude='*.pem' \
             --exclude='*.ppk' \
-            -e "ssh -i ~/.ssh/deploy_key" \
-            ./ "$EC2_USER@$EC2_HOST:/home/ubuntu/app/"
+            ./ /home/ubuntu/app/
 
-      # 4. Install Python and dependencies
-      - name: Install Dependencies on EC2
+      # 3. Install dependencies
+      - name: Install Dependencies
         shell: bash
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          set -e
+          set -euo pipefail
 
-          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
-            set -e
+          cd /home/ubuntu/app
 
-            cd /home/ubuntu/app
+          python3 -m venv venv
 
-            sudo apt-get update
-            sudo apt-get install -y python3-venv
+          source venv/bin/activate
 
-            python3 -m venv venv
+          python -m pip install --upgrade pip
 
-            source venv/bin/activate
+          if [ ! -f requirements.txt ]; then
+            echo "requirements.txt not found!"
+            exit 1
+          fi
 
-            python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-            if [ -f requirements.txt ]; then
-              pip install -r requirements.txt
-            else
-              echo "ERROR: requirements.txt not found"
-              exit 1
-            fi
+          echo "Dependencies installed successfully"
 
-            echo "Dependencies installed successfully"
-          EOF
-
-      # 5. Restart application
+      # 4. Restart FastAPI
       - name: Restart Application
         shell: bash
-        env:
-          EC2_HOST: ${{ secrets.EC2_HOST }}
-          EC2_USER: ${{ secrets.EC2_USER }}
         run: |
-          set -e
+          set -euo pipefail
 
-          ssh -i ~/.ssh/deploy_key "$EC2_USER@$EC2_HOST" << 'EOF'
-            set -e
+          sudo systemctl restart mental-health-score
 
-            sudo systemctl restart mental-health-score
+          sudo systemctl is-active --quiet mental-health-score
 
-            sudo systemctl is-active mental-health-score
+          echo "Application restarted successfully!"
 
-            echo "Deployment successful!"
-          EOF
-
-      # 6. Cleanup SSH key
-      - name: Cleanup SSH Key
-        if: always()
+      # 5. Health Check
+      - name: API Health Check
         shell: bash
         run: |
-          rm -f ~/.ssh/deploy_key
+          set -euo pipefail
+
+          for i in {1..10}; do
+            if curl -fsS http://127.0.0.1:8000/docs > /dev/null; then
+              echo "API is working successfully!"
+              exit 0
+            fi
+
+            sleep 3
+          done
+
+          echo "API health check failed!"
+          sudo journalctl -u mental-health-score -n 30 --no-pager
+          exit 1
