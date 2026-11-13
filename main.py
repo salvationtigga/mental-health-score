@@ -46,6 +46,10 @@ class PredictionResponse(BaseModel):
 def greet():
     return{'Welcome to Sheryians AI School guys'}
 
+@app.get("/")
+def hello():
+    return "Hello! Welcome to the Mental Health Prediction API."
+
 
 top_countries = ['Other','India','USA','Canada','Australia','UK','Germany','Mexico',
  'Turkey','France']
