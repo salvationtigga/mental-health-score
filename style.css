@@ -159,7 +159,7 @@ input:focus-visible, select:focus-visible { outline: none; border-color: var(--t
 .btn {
   font: inherit; font-weight: 700; cursor: pointer;
   border: 0; border-radius: 12px; padding: 14px 28px;
-  color: #fff; background: var(--teal-dark);
+  color: #fff; background: var(green);
   transition: transform .1s, background .15s, opacity .15s;
 }
 @media (prefers-color-scheme: dark) { .btn { color: #0e1c22; background: var(--teal); } }
